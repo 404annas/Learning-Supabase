@@ -37,33 +37,62 @@ function TaskManager() {
             console.error("Error deleting task:", error.message);
             alert("Error: " + error.message);
             return;
+        } else {
+            console.log("Task deleted successfully!");
+            alert("Task deleted successfully!");
+            fetchTasks();
         }
     }
 
     const updateTask = async (id: number) => {
+        if (!newDescription) {
+            alert("Please enter a new description first!");
+            return;
+        }
+
         const { error } = await supabase.from("tasks").update({ description: newDescription }).eq("id", id)
 
         if (error) {
             console.error("Error updating task:", error.message);
             alert("Error: " + error.message);
             return;
+        } else {
+            console.log("Task updated successfully!");
+            alert("Task updated successfully!");
+            setNewDescription("");
+            fetchTasks();
         }
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        console.log("Submitting task:", newTask);
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-        const { error } = await supabase.from("tasks").insert(newTask).single();
+        if (authError || !user) {
+            console.error("Auth error:", authError);
+            alert("You must be logged in to add a task!");
+            return;
+        }
+
+        console.log("Current Logged In User ID:", user.id);
+
+        const taskToInsert = {
+            title: newTask.title,
+            description: newTask.description,
+            user_id: user.id
+        }
+
+        const { error } = await supabase.from("tasks").insert(taskToInsert).single();
 
         if (error) {
             console.error("Error adding task:", error.message);
             alert("Error: " + error.message);
         } else {
-            console.log("Task added successfully:", newTask);
+            console.log("Task added successfully!");
             alert("Task added successfully!");
             setNewTask({ title: "", description: "" });
+            fetchTasks();
         }
     }
 
