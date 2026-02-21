@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { supabase } from "../supabase-client";
 
 interface Task {
@@ -6,6 +6,7 @@ interface Task {
     title: string,
     description: string,
     created_at: string
+    image_url?: string
 }
 
 function TaskManager() {
@@ -16,6 +17,7 @@ function TaskManager() {
     })
     const [newDescription, setNewDescription] = useState("")
     const [tasks, setTasks] = useState<Task[]>([])
+    const [taskImage, setTaskImage] = useState<File | null>(null)
 
     const fetchTasks = async () => {
         const { error, data } = await supabase.from("tasks").select("*").order("created_at", { ascending: true })
@@ -64,6 +66,23 @@ function TaskManager() {
         }
     }
 
+    const uploadImage = async (file: File): Promise<string | null> => {
+        const filePath = `${file.name}-${Date.now()}`
+
+        const { error } = await supabase.storage.from("tasks-images").upload(filePath, file)
+
+        if (error) {
+            console.log("Error occurred while uploading image", error.message);
+            return null;
+        } else {
+            alert("Image uploaded successfully.")
+        }
+
+        const { data } = await supabase.storage.from("tasks-images").getPublicUrl(filePath)
+
+        return data.publicUrl;
+    }
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -77,10 +96,16 @@ function TaskManager() {
 
         console.log("Current Logged In User ID:", user.id);
 
+        let imageUrl: string | null = null;
+        if (taskImage) {
+            imageUrl = await uploadImage(taskImage)
+        }
+
         const taskToInsert = {
             title: newTask.title,
             description: newTask.description,
-            user_id: user.id
+            user_id: user.id,
+            image_url: imageUrl
         }
 
         const { error } = await supabase.from("tasks").insert(taskToInsert).single();
@@ -92,13 +117,38 @@ function TaskManager() {
             console.log("Task added successfully!");
             alert("Task added successfully!");
             setNewTask({ title: "", description: "" });
-            fetchTasks();
+            setTaskImage(null)
+        }
+    }
+
+    const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            setTaskImage(e.target.files[0])
         }
     }
 
     useEffect(() => {
-        fetchTasks()
-    }, [])
+        fetchTasks();
+    }, []);
+
+    useEffect(() => {
+        // 1. Create the channel
+        const channel = supabase.channel("tasks-channel")
+            .on("postgres_changes", { event: "INSERT", schema: "public", table: "tasks" }, (payload) => {
+                console.log("Realtime Payload received!", payload);
+                const newTask = payload.new as Task;
+                setTasks((prev) => [...prev, newTask]); // Add the new task to the UI
+            })
+            .subscribe((status) => {
+                console.log("Subscription status:", status);
+            });
+
+        // 2. CLEANUP FUNCTION (Very Important!)
+        // This stops the CHANNEL_ERROR by closing the old connection before making a new one
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     console.log(tasks);
 
@@ -120,6 +170,7 @@ function TaskManager() {
                     onChange={(e) => setNewTask((prev) => ({ ...prev, description: e.target.value }))}
                     style={{ width: "100%", marginBottom: "0.5rem", padding: "0.5rem" }}
                 />
+                <input type="file" accept="image/*" onChange={handleFileChange} />
                 <button type="submit" style={{ padding: "0.5rem 1rem" }}>
                     Add Task
                 </button>
@@ -142,6 +193,13 @@ function TaskManager() {
                             <p>{task.title}</p>
                             <p>Description</p>
                             <p>{task.description}</p>
+                            {task.image_url && (
+                                <img
+                                    src={task.image_url}
+                                    alt="Task attachment"
+                                    style={{ maxWidth: "100%", height: "auto", marginTop: "10px", borderRadius: "8px" }}
+                                />
+                            )}
                             <div>
                                 <textarea placeholder="Updated Description..." onChange={(e) => setNewDescription(e.target.value)}></textarea>
                                 {/* Edit and Delete buttons */}
