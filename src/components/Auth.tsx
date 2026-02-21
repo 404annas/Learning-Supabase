@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
+import { supabase } from "../supabase-client";
 
 export const Auth = () => {
     const [isSignUp, setIsSignUp] = useState(false);
@@ -7,6 +8,18 @@ export const Auth = () => {
 
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+
+        if (isSignUp) {
+            const { error: signUpError } = await supabase.auth.signUp({ email, password })
+            if (signUpError) {
+                console.log("Error occurred while Singing Up", signUpError.message)
+            }
+        } else {
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+            if (signInError) {
+                console.log("Error occurred while Singing Up", signInError.message)
+            }
+        }
     };
 
     return (
